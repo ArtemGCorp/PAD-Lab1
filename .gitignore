@@ -1,0 +1,10 @@
+# Compiled binary
+/pad-lab1
+
+# Runtime data — the app creates these where it is run
+journal.xlsx
+journal.tmp.xlsx
+
+# Office suite lock markers (Excel / ONLYOFFICE / LibreOffice)
+~$*.xlsx
+.~lock.*#

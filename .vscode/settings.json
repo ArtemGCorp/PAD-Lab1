@@ -1,0 +1,8 @@
+{
+  "claude.mcpServers": {
+    "rosetta": {
+      "command": "npx",
+      "args": ["-y", "@griddynamics/rosetta-mcp"]
+    }
+  }
+}
