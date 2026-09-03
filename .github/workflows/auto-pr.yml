@@ -1,0 +1,83 @@
+name: Auto PR
+
+# Opens a pull request into main whenever you push any other branch,
+# then assigns it to you and requests your review so GitHub emails you.
+#
+# REQUIRED ONE-TIME SETUP (Settings → Actions → General → Workflow permissions):
+#   1. Select "Read and write permissions"
+#   2. Tick "Allow GitHub Actions to create and approve pull requests"
+# Without both, the create step fails with a permissions error.
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    name: Open PR into main
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          existing=$(gh pr list --head "$BRANCH" --base main --state open \
+            --json number --jq '.[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            echo "PR #$existing is already open for $BRANCH — new commits are on it already."
+            echo "number=$existing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Seed the body with the commits this branch adds on top of main.
+          # Written to a file rather than an inline heredoc: nesting a heredoc
+          # inside $(...) inside indented YAML does not terminate reliably.
+          {
+            echo "Opened automatically on push to \`$BRANCH\`."
+            echo
+            echo "### Commits"
+            git log --pretty=format:'- %s' origin/main.."$BRANCH" || echo '- (commit list unavailable)'
+            echo
+            echo
+            echo "### Before merging"
+            echo "- [ ] CI is green"
+            echo "- [ ] Changes reviewed"
+            echo
+            echo "_Merge this yourself once CI passes — you do not need a second approver._"
+          } > /tmp/pr-body.md
+
+          number=$(gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "$BRANCH" \
+            --body-file /tmp/pr-body.md \
+            | grep -oE '[0-9]+$')
+
+          echo "Opened PR #$number"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Notify the repository owner
+        if: steps.pr.outputs.number != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # Assigning triggers an email. Requesting review adds an Approve
+          # button — valid here because the bot, not you, authored the PR.
+          gh pr edit "$NUMBER" --add-assignee "$OWNER" || echo "Could not assign."
+          gh pr edit "$NUMBER" --add-reviewer "$OWNER" || echo "Could not request review."
